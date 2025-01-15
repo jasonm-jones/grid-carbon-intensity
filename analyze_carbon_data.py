@@ -7,7 +7,7 @@ def calculate_daily_variability(df):
     Calculate average daily variability of carbon intensity: (max - min)/min
     """
     # Resample to daily and calculate max, min for each day
-    daily_stats = df.resample('D')['Carbon Intensity gCO₂eq/kWh (direct)'].agg(['max', 'min'])
+    daily_stats = df.resample('D')['Carbon Intensity gCO₂eq/kWh (LCA)'].agg(['max', 'min'])
     # Calculate daily variability
     daily_variability = (daily_stats['max'] - daily_stats['min']) / daily_stats['min']
     # Return mean of daily variability
@@ -52,10 +52,11 @@ def analyze_data(data_dict):
             'zone_id': zone_id,
             'zone_name': df['Zone Name'].iloc[0],
             'total_hours': len(df),
-            'avg_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (direct)'].mean(),
-            'max_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (direct)'].max(),
-            'min_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (direct)'].min(),
+            'avg_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (LCA)'].mean(),
+            'max_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (LCA)'].max(),
+            'min_carbon_intensity': df['Carbon Intensity gCO₂eq/kWh (LCA)'].min(),
             'avg_renewable_percentage': df['Renewable Percentage'].mean(),
+            'min_renewable_percentage': df['Renewable Percentage'].min(),
             'max_renewable_percentage': df['Renewable Percentage'].max(),
             'daily_variability': calculate_daily_variability(df)
         }
@@ -64,6 +65,20 @@ def analyze_data(data_dict):
     # Sort results by average carbon intensity in descending order
     results.sort(key=lambda x: x['avg_carbon_intensity'], reverse=True)
     return results
+
+# Add debugging information
+def analyze_zone_data(df, zone_id):
+    """Analyze a single zone with detailed output"""
+    carbon_mean = df['Carbon Intensity gCO₂eq/kWh (LCA)'].mean()
+    data_points = len(df)
+    missing_points = df['Carbon Intensity gCO₂eq/kWh (LCA)'].isna().sum()
+    
+    print(f"\nAnalyzing {zone_id}:")
+    print(f"Total data points: {data_points}")
+    print(f"Missing values: {missing_points}")
+    print(f"Date range: {df.index.min()} to {df.index.max()}")
+    print(f"Average carbon intensity: {carbon_mean:.1f}")
+    return carbon_mean
 
 if __name__ == "__main__":
     # Load all data
@@ -98,4 +113,39 @@ if __name__ == "__main__":
         print(f"Min carbon intensity: {stats['min_carbon_intensity']:.2f} gCO₂eq/kWh")
         print(f"Daily variability: {stats['daily_variability']:.2%}")
         print(f"Average renewable percentage: {stats['avg_renewable_percentage']:.2f}%")
+        print(f"Min renewable percentage: {stats['min_renewable_percentage']:.2f}%")
         print(f"Max renewable percentage: {stats['max_renewable_percentage']:.2f}%") 
+
+    # Calculate stats for top 15 zones
+    top_15 = results[:15]
+
+    # Calculate group averages
+    avg_carbon = sum(z['avg_carbon_intensity'] for z in top_15) / len(top_15)
+    avg_variability = sum(z['daily_variability'] for z in top_15) / len(top_15)
+
+    # Print table with totals
+    print("\nCarbon Intensity Analysis - 15 Highest-Emission Zones (2023)")
+    print("===========================================================================")
+    print(f"{'Zone':<35} {'Carbon Intensity':>20} {'Daily Variation':>15}")
+    print("---------------------------------------------------------------------------")
+
+    for zone in top_15:
+        name = zone['zone_name'][:34]  # Truncate long names
+        carbon = f"{zone['avg_carbon_intensity']:.1f}"
+        var = f"{zone['daily_variability']:.1%}"
+        print(f"{name:<35} {carbon:>15} gCO₂eq/kWh {var:>12}")
+
+    print("---------------------------------------------------------------------------")
+    print(f"{'Group Average':<35} {avg_carbon:>15.1f} gCO₂eq/kWh {avg_variability:>12.1%}")
+    
+    # Calculate stats for top 15 zones with verification
+    print("Verifying calculations for top 15 zones...")
+    for zone in top_15:
+        zone_df = data[zone['zone_id']]
+        verified_avg = analyze_zone_data(zone_df, zone['zone_id'])
+        if abs(verified_avg - zone['avg_carbon_intensity']) > 0.1:
+            print(f"WARNING: Mismatch found for {zone['zone_id']}")
+            print(f"Stored value: {zone['avg_carbon_intensity']:.1f}")
+            print(f"Calculated value: {verified_avg:.1f}")
+    
+    
